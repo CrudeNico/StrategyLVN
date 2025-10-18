@@ -178,7 +178,7 @@ def label_structure(df: pd.DataFrame, zigzag, pct: float) -> pd.DataFrame:
     return pivot_points[ordered_columns]
 
 
-def main(pct_threshold: float = 0.003) -> None:
+def main(pct_threshold: float = 0.001) -> None:
     df = load_data()
     zigzag_cls = build_zigzag_indicator()
     zigzag = zigzag_cls.run(df["close"], pct=pct_threshold)

@@ -17,6 +17,7 @@ SWINGS_FILE = RESULTS_DIR / "zigzag_swings.csv"
 HL_TO_HH_FILE = RESULTS_DIR / "zigzag_swings_hl_to_hh.csv"
 LH_TO_LL_FILE = RESULTS_DIR / "zigzag_swings_lh_to_ll.csv"
 LVN_FILE = RESULTS_DIR / "zigzag_lvn_summary.csv"
+EMA20_FILE = RESULTS_DIR / "ema20.csv"
 OUTPUT_FILE = Path(__file__).resolve().parent / "1minute_candles.html"
 
 
@@ -69,6 +70,14 @@ def load_lvn_summary() -> Optional[pd.DataFrame]:
     return df
 
 
+def load_ema(path: Path) -> Optional[pd.DataFrame]:
+    if not path.exists():
+        return None
+    df = pd.read_csv(path, parse_dates=["datetime"])
+    df.sort_values("datetime", inplace=True, ignore_index=True)
+    return df
+
+
 def _append_segment_data(
     transitions: pd.DataFrame,
     from_col: str,
@@ -94,6 +103,7 @@ def build_figure(
     hl_to_hh: Optional[pd.DataFrame],
     lh_to_ll: Optional[pd.DataFrame],
     lvn_df: Optional[pd.DataFrame],
+    ema20: Optional[pd.DataFrame],
 ) -> go.Figure:
     """Build a Plotly candlestick figure with additional overlays."""
     fig = go.Figure(
@@ -110,6 +120,18 @@ def build_figure(
             )
         ]
     )
+
+    if ema20 is not None and not ema20.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=ema20["datetime"],
+                y=ema20["ema_20"],
+                mode="lines",
+                line=dict(color="#2962ff", width=1.6),
+                name="EMA 20",
+                hovertemplate="EMA20<br>%{x}<br>%{y:.2f}<extra></extra>",
+            )
+        )
 
     if swing_df is not None and not swing_df.empty:
         text_positions = np.where(
@@ -319,7 +341,8 @@ def main() -> None:
     hl_to_hh = load_transitions(HL_TO_HH_FILE)
     lh_to_ll = load_transitions(LH_TO_LL_FILE)
     lvn_df = load_lvn_summary()
-    fig = build_figure(df, swing_df, hl_to_hh, lh_to_ll, lvn_df)
+    ema20 = load_ema(EMA20_FILE)
+    fig = build_figure(df, swing_df, hl_to_hh, lh_to_ll, lvn_df, ema20)
     fig.write_html(OUTPUT_FILE, include_plotlyjs="cdn", full_html=True)
     print(f"Candlestick chart saved to {OUTPUT_FILE}")
 

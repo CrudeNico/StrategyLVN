@@ -137,9 +137,6 @@ def build_figure(
         text_positions = np.where(
             swing_df["pivot_side"] == "High", "top center", "bottom center"
         )
-        marker_colors = np.where(
-            swing_df["pivot_side"] == "High", "#4e79a7", "#f28e2b"
-        )
 
         custom_leg_data = np.stack(
             [
@@ -185,10 +182,9 @@ def build_figure(
                 y=swing_df["pivot_price"],
                 mode="markers+text",
                 marker=dict(
-                    size=11,
-                    color=marker_colors,
-                    symbol="diamond",
-                    line=dict(color="#1f1f1f", width=1.2),
+                    size=7,
+                    color="#212121",
+                    symbol="circle",
                 ),
                 text=swing_df["structure_label"],
                 textposition=text_positions,

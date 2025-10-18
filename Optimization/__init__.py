@@ -1,1 +1,1 @@
-# Marks Optimization as a package for scenario testing.
+"""Optimization utilities for parameter sweeps."""

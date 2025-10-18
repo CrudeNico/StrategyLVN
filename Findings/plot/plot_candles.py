@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a Plotly candlestick chart from the 1-minute data feed."""
+"""Generate a Plotly candlestick chart with ZigZag structure, transitions, and LVNs."""
 
 from pathlib import Path
 from typing import Optional
@@ -12,7 +12,11 @@ import plotly.graph_objects as go
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_FILE = DATA_DIR / "1minute.txt"
-RESULTS_FILE = PROJECT_ROOT / "Findings" / "Results" / "zigzag_swings.csv"
+RESULTS_DIR = PROJECT_ROOT / "Findings" / "Results"
+SWINGS_FILE = RESULTS_DIR / "zigzag_swings.csv"
+HL_TO_HH_FILE = RESULTS_DIR / "zigzag_swings_hl_to_hh.csv"
+LH_TO_LL_FILE = RESULTS_DIR / "zigzag_swings_lh_to_ll.csv"
+LVN_FILE = RESULTS_DIR / "zigzag_lvn_summary.csv"
 OUTPUT_FILE = Path(__file__).resolve().parent / "1minute_candles.html"
 
 
@@ -42,15 +46,56 @@ def load_data() -> pd.DataFrame:
 
 def load_swings() -> Optional[pd.DataFrame]:
     """Load ZigZag swing labels if they exist."""
-    if not RESULTS_FILE.exists():
+    if not SWINGS_FILE.exists():
         return None
-    swing_df = pd.read_csv(RESULTS_FILE, parse_dates=["datetime"])
+    swing_df = pd.read_csv(SWINGS_FILE, parse_dates=["datetime"])
     swing_df.sort_values("datetime", inplace=True, ignore_index=True)
     return swing_df
 
 
-def build_figure(df: pd.DataFrame, swing_df: Optional[pd.DataFrame]) -> go.Figure:
-    """Build a Plotly candlestick figure."""
+def load_transitions(path: Path) -> Optional[pd.DataFrame]:
+    if not path.exists():
+        return None
+    df = pd.read_csv(path, parse_dates=["from_datetime", "to_datetime"])
+    df.sort_values(["from_datetime", "to_datetime"], inplace=True, ignore_index=True)
+    return df
+
+
+def load_lvn_summary() -> Optional[pd.DataFrame]:
+    if not LVN_FILE.exists():
+        return None
+    df = pd.read_csv(LVN_FILE, parse_dates=["from_datetime", "to_datetime"])
+    df.sort_values(["transition_type", "from_datetime"], inplace=True, ignore_index=True)
+    return df
+
+
+def _append_segment_data(
+    transitions: pd.DataFrame,
+    from_col: str,
+    to_col: str,
+    price_from_col: str,
+    price_to_col: str,
+    extra_columns: list[str],
+) -> tuple[list, list, list]:
+    xs: list = []
+    ys: list = []
+    custom: list = []
+    for row in transitions.itertuples():
+        xs.extend([getattr(row, from_col), getattr(row, to_col), None])
+        ys.extend([getattr(row, price_from_col), getattr(row, price_to_col), None])
+        extras = [getattr(row, col) for col in extra_columns]
+        custom.extend([extras, extras, [None] * len(extras)])
+    return xs, ys, custom
+
+
+def build_figure(
+    df: pd.DataFrame,
+    swing_df: Optional[pd.DataFrame],
+    hl_to_hh: Optional[pd.DataFrame],
+    lh_to_ll: Optional[pd.DataFrame],
+    lvn_df: Optional[pd.DataFrame],
+) -> go.Figure:
+    """Build a Plotly candlestick figure with additional overlays."""
     fig = go.Figure(
         data=[
             go.Candlestick(
@@ -140,6 +185,108 @@ def build_figure(df: pd.DataFrame, swing_df: Optional[pd.DataFrame]) -> go.Figur
                 customdata=custom_marker_data,
             )
         )
+
+    if hl_to_hh is not None and not hl_to_hh.empty:
+        hl_x, hl_y, hl_custom = _append_segment_data(
+            hl_to_hh,
+            from_col="from_datetime",
+            to_col="to_datetime",
+            price_from_col="from_price",
+            price_to_col="to_price",
+            extra_columns=[
+                "from_leg_id",
+                "to_leg_id",
+                "price_change",
+                "pct_change",
+                "time_delta_minutes",
+            ],
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=hl_x,
+                y=hl_y,
+                mode="lines",
+                line=dict(color="#1b9e77", width=1.5),
+                name="HL → HH",
+                legendgroup="transitions",
+                hovertemplate=(
+                    "HL → HH<br>"
+                    "From leg %{customdata[0]}, to %{customdata[1]}<br>"
+                    "Price Δ %{customdata[2]:+.2f} (%{customdata[3]:+.2%})<br>"
+                    "Duration %{customdata[4]:.1f} min<extra></extra>"
+                ),
+                customdata=hl_custom,
+            )
+        )
+
+    if lh_to_ll is not None and not lh_to_ll.empty:
+        lh_x, lh_y, lh_custom = _append_segment_data(
+            lh_to_ll,
+            from_col="from_datetime",
+            to_col="to_datetime",
+            price_from_col="from_price",
+            price_to_col="to_price",
+            extra_columns=[
+                "from_leg_id",
+                "to_leg_id",
+                "price_change",
+                "pct_change",
+                "time_delta_minutes",
+            ],
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=lh_x,
+                y=lh_y,
+                mode="lines",
+                line=dict(color="#d95f02", width=1.5),
+                name="LH → LL",
+                legendgroup="transitions",
+                hovertemplate=(
+                    "LH → LL<br>"
+                    "From leg %{customdata[0]}, to %{customdata[1]}<br>"
+                    "Price Δ %{customdata[2]:+.2f} (%{customdata[3]:+.2%})<br>"
+                    "Duration %{customdata[4]:.1f} min<extra></extra>"
+                ),
+                customdata=lh_custom,
+            )
+        )
+
+    if lvn_df is not None and not lvn_df.empty:
+        lvn_x, lvn_y, lvn_custom = _append_segment_data(
+            lvn_df,
+            from_col="from_datetime",
+            to_col="to_datetime",
+            price_from_col="lvn_price_center",
+            price_to_col="lvn_price_center",
+            extra_columns=[
+                "transition_type",
+                "from_leg_id",
+                "to_leg_id",
+                "lvn_price_min",
+                "lvn_price_max",
+                "lvn_volume",
+                "lvn_volume_pct",
+            ],
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=lvn_x,
+                y=lvn_y,
+                mode="lines",
+                line=dict(color="#636363", width=2, dash="dash"),
+                name="LVN Band",
+                legendgroup="lvn",
+                hovertemplate=(
+                    "%{customdata[0]} LVN<br>"
+                    "Legs %{customdata[1]} → %{customdata[2]}<br>"
+                    "Band [%{customdata[3]:.2f}, %{customdata[4]:.2f}]<br>"
+                    "Vol %{customdata[5]:.0f} (%{customdata[6]:.2%})<extra></extra>"
+                ),
+                customdata=lvn_custom,
+            )
+        )
+
     fig.update_layout(
         title="1-Minute Candlestick Chart (December 2024)",
         xaxis_title="Time",
@@ -169,7 +316,10 @@ def build_figure(df: pd.DataFrame, swing_df: Optional[pd.DataFrame]) -> go.Figur
 def main() -> None:
     df = load_data()
     swing_df = load_swings()
-    fig = build_figure(df, swing_df)
+    hl_to_hh = load_transitions(HL_TO_HH_FILE)
+    lh_to_ll = load_transitions(LH_TO_LL_FILE)
+    lvn_df = load_lvn_summary()
+    fig = build_figure(df, swing_df, hl_to_hh, lh_to_ll, lvn_df)
     fig.write_html(OUTPUT_FILE, include_plotlyjs="cdn", full_html=True)
     print(f"Candlestick chart saved to {OUTPUT_FILE}")
 

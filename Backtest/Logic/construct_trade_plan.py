@@ -81,27 +81,36 @@ def find_next_pivot(
 
 def find_entry(
     price_df: pd.DataFrame,
-    lvn_center: float,
+    lvn_min: float,
+    lvn_max: float,
     start_time: pd.Timestamp,
     end_time: pd.Timestamp,
 ) -> Optional[tuple[pd.Timestamp, float]]:
-    """Find an executable entry following an LVN touch."""
+    """Find the first LVN retest after the leg completes."""
     window = price_df.loc[start_time:end_time]
-    if window.empty:
+    if window.empty or len(window) < 2:
         return None
+
+    zone_min = min(lvn_min, lvn_max)
+    zone_max = max(lvn_min, lvn_max)
 
     for idx in range(len(window) - 1):
         bar = window.iloc[idx]
-        next_bar = window.iloc[idx + 1]
-        if not bar["can_open_trades"]:
+        if bar.name <= start_time:
             continue
-        if bar["low"] <= lvn_center <= bar["high"]:
-            # Execute on open of next bar to avoid intrabar bias
-            if not next_bar["can_open_trades"]:
-                continue
-            entry_time = next_bar.name
-            entry_price = next_bar["open"]
-            return entry_time, float(entry_price)
+
+        next_bar = window.iloc[idx + 1]
+        if not bar["can_open_trades"] or not next_bar["can_open_trades"]:
+            continue
+
+        touches_zone = bar["low"] <= zone_max and bar["high"] >= zone_min
+        if not touches_zone:
+            continue
+
+        entry_time = next_bar.name
+        entry_price = next_bar["open"]
+        return entry_time, float(entry_price)
+
     return None
 
 
@@ -132,11 +141,13 @@ def build_trade_scenarios() -> list[TradeScenario]:
         target_exec_time = price_df.index[target_loc + 1]
         target_price = float(price_df.iloc[target_loc + 1]["open"])
 
-        entry_window_end = min(target_time, row.to_datetime)
+        entry_window_start = row.to_datetime
+        entry_window_end = target_time
         entry = find_entry(
             price_df,
-            lvn_center=float(row.lvn_price_center),
-            start_time=row.from_datetime,
+            lvn_min=float(row.lvn_price_min),
+            lvn_max=float(row.lvn_price_max),
+            start_time=entry_window_start,
             end_time=entry_window_end,
         )
         if entry is None:

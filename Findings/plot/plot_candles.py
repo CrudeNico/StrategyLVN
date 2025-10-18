@@ -9,9 +9,10 @@ import pandas as pd
 import plotly.graph_objects as go
 
 
-DATA_DIR = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
 DATA_FILE = DATA_DIR / "1minute.txt"
-RESULTS_FILE = Path(__file__).resolve().parents[2] / "Results" / "zigzag_swings.csv"
+RESULTS_FILE = PROJECT_ROOT / "Findings" / "Results" / "zigzag_swings.csv"
 OUTPUT_FILE = Path(__file__).resolve().parent / "1minute_candles.html"
 
 

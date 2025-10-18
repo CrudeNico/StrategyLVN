@@ -11,9 +11,10 @@ import pandas as pd
 import vectorbt as vbt
 
 
-DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data"
 DATA_FILE = DATA_DIR / "1minute.txt"
-OUTPUT_FILE = Path(__file__).resolve().parents[2] / "Results" / "zigzag_swings.csv"
+OUTPUT_FILE = PROJECT_ROOT / "Findings" / "Results" / "zigzag_swings.csv"
 
 
 def load_data() -> pd.DataFrame:

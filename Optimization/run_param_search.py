@@ -43,8 +43,9 @@ BEST_TRADE_RESULTS_FILE = RESULTS_DIR / "best_trade_results.csv"
 BEST_EQUITY_FILE = RESULTS_DIR / "best_equity_curve.csv"
 
 # Parameter grid (expand or adjust as needed)
-ZIGZAG_PCTS = [0.0005, 0.00075, 0.001, 0.00125, 0.0015]
-VOLUME_BINS = [100, 140, 180, 220]
+ZIGZAG_PCTS = [0.0005]
+VOLUME_BINS = [140]
+EMA_SPANS = [10, 15, 20, 25, 30, 40, 50]
 
 
 def build_trade_scenarios_for_params(
@@ -188,7 +189,7 @@ def main() -> None:
     scenarios_summary = []
     best_result = None
 
-    for zigzag_pct, vp_bins in product(ZIGZAG_PCTS, VOLUME_BINS):
+    for zigzag_pct, vp_bins, ema_span in product(ZIGZAG_PCTS, VOLUME_BINS, EMA_SPANS):
         zigzag = zigzag_indicator.run(raw_prices["close"], pct=zigzag_pct)
         swings = label_structure(raw_prices, zigzag, zigzag_pct)
 
@@ -208,6 +209,10 @@ def main() -> None:
         if lvn_df.empty:
             continue
 
+        ema_series = raw_prices["close"].ewm(
+            span=ema_span, adjust=False, min_periods=ema_span
+        ).mean()
+
         trade_scenarios = build_trade_scenarios_for_params(
             price_df, swings, lvn_df, ema_series
         )
@@ -218,7 +223,13 @@ def main() -> None:
         base_trades = build_base_trades(price_df, plan_df)
         trades_df, equity_df = size_trades(base_trades)
         metrics = compute_metrics(trades_df, equity_df)
-        metrics.update({"zigzag_pct": zigzag_pct, "volume_bins": vp_bins})
+        metrics.update(
+            {
+                "zigzag_pct": zigzag_pct,
+                "volume_bins": vp_bins,
+                "ema_span": ema_span,
+            }
+        )
         scenarios_summary.append(metrics)
 
         if best_result is None or (
@@ -232,7 +243,7 @@ def main() -> None:
             }
 
         print(
-            f"Evaluated pct={zigzag_pct:.4f}, bins={vp_bins} → "
+            f"Evaluated pct={zigzag_pct:.4f}, bins={vp_bins}, ema={ema_span} → "
             f"trades={metrics['total_trades']} win_rate={metrics['win_rate']:.2%} "
             f"PnL={metrics['total_pnl']:.2f}€ Sharpe={metrics['sharpe']:.2f}"
         )

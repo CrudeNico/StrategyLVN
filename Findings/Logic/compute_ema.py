@@ -36,7 +36,7 @@ def load_data() -> pd.DataFrame:
     return df
 
 
-def compute_ema(df: pd.DataFrame, span: int = 20) -> pd.DataFrame:
+def compute_ema(df: pd.DataFrame, span: int = 50) -> pd.DataFrame:
     ema_series = df["close"].ewm(span=span, adjust=False, min_periods=span).mean()
     return pd.DataFrame(
         {
@@ -47,7 +47,7 @@ def compute_ema(df: pd.DataFrame, span: int = 20) -> pd.DataFrame:
     )
 
 
-def main(span: int = 20) -> None:
+def main(span: int = 50) -> None:
     df = load_data()
     ema_df = compute_ema(df, span=span)
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)

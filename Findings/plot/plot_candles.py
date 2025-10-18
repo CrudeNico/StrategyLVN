@@ -75,6 +75,15 @@ def load_ema(path: Path) -> Optional[pd.DataFrame]:
         return None
     df = pd.read_csv(path, parse_dates=["datetime"])
     df.sort_values("datetime", inplace=True, ignore_index=True)
+    ema_cols = [col for col in df.columns if col.startswith("ema_")]
+    if ema_cols:
+        col = ema_cols[0]
+        df.rename(columns={col: "ema_value"}, inplace=True)
+        try:
+            span = int(col.split("_")[1])
+        except (IndexError, ValueError):
+            span = None
+        df.attrs["ema_span"] = span
     return df
 
 
@@ -122,14 +131,15 @@ def build_figure(
     )
 
     if ema20 is not None and not ema20.empty:
+        ema_span = ema20.attrs.get("ema_span", 20)
         fig.add_trace(
             go.Scatter(
                 x=ema20["datetime"],
-                y=ema20["ema_20"],
+                y=ema20["ema_value"],
                 mode="lines",
                 line=dict(color="#2962ff", width=1.6),
-                name="EMA 20",
-                hovertemplate="EMA20<br>%{x}<br>%{y:.2f}<extra></extra>",
+                name=f"EMA {ema_span}",
+                hovertemplate=f"EMA {ema_span}<br>%{{x}}<br>%{{y:.2f}}<extra></extra>",
             )
         )
 

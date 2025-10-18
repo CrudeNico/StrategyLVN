@@ -70,7 +70,10 @@ def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
     ).sort_values("leg_id", ignore_index=True)
     ema_df = pd.read_csv(EMA_FILE, parse_dates=["datetime"])
     ema_df.sort_values("datetime", inplace=True, ignore_index=True)
-    ema_series = ema_df.set_index("datetime")["ema_20"].astype(float)
+    ema_cols = [col for col in ema_df.columns if col.startswith("ema_")]
+    if not ema_cols:
+        raise ValueError("EMA file does not contain an ema_* column")
+    ema_series = ema_df.set_index("datetime")[ema_cols[0]].astype(float)
     return price_df, lvn_df, swings_df, ema_series
 
 

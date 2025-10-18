@@ -15,6 +15,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_FILE = DATA_DIR / "1minute.txt"
 OUTPUT_FILE = PROJECT_ROOT / "Findings" / "Results" / "zigzag_swings.csv"
+HL_TO_HH_FILE = PROJECT_ROOT / "Findings" / "Results" / "zigzag_swings_hl_to_hh.csv"
+LH_TO_LL_FILE = PROJECT_ROOT / "Findings" / "Results" / "zigzag_swings_lh_to_ll.csv"
 
 
 def load_data() -> pd.DataFrame:
@@ -178,6 +180,62 @@ def label_structure(df: pd.DataFrame, zigzag, pct: float) -> pd.DataFrame:
     return pivot_points[ordered_columns]
 
 
+def build_transition_pairs(
+    swing_df: pd.DataFrame, from_label: str, to_label: str
+) -> pd.DataFrame:
+    """Create a DataFrame describing sequential label transitions."""
+    records = []
+    entries = swing_df.sort_values("leg_id").reset_index(drop=True)
+
+    for idx in range(len(entries) - 1):
+        current_row = entries.iloc[idx]
+        next_row = entries.iloc[idx + 1]
+        if (
+            current_row["structure_label"] == from_label
+            and next_row["structure_label"] == to_label
+        ):
+            time_delta = next_row["datetime"] - current_row["datetime"]
+            records.append(
+                {
+                    "from_leg_id": int(current_row["leg_id"]),
+                    "from_datetime": current_row["datetime"],
+                    "from_label": current_row["structure_label"],
+                    "from_pivot_side": current_row["pivot_side"],
+                    "from_price": float(current_row["pivot_price"]),
+                    "to_leg_id": int(next_row["leg_id"]),
+                    "to_datetime": next_row["datetime"],
+                    "to_label": next_row["structure_label"],
+                    "to_pivot_side": next_row["pivot_side"],
+                    "to_price": float(next_row["pivot_price"]),
+                    "price_change": float(next_row["pivot_price"] - current_row["pivot_price"]),
+                    "pct_change": float(next_row["pivot_price"] / current_row["pivot_price"] - 1.0)
+                    if current_row["pivot_price"] != 0
+                    else 0.0,
+                    "time_delta_minutes": float(time_delta.total_seconds() / 60.0),
+                    "threshold_pct": float(next_row["threshold_pct"]),
+                }
+            )
+
+    columns = [
+        "from_leg_id",
+        "from_datetime",
+        "from_label",
+        "from_pivot_side",
+        "from_price",
+        "to_leg_id",
+        "to_datetime",
+        "to_label",
+        "to_pivot_side",
+        "to_price",
+        "price_change",
+        "pct_change",
+        "time_delta_minutes",
+        "threshold_pct",
+    ]
+
+    return pd.DataFrame.from_records(records, columns=columns)
+
+
 def main(pct_threshold: float = 0.001) -> None:
     df = load_data()
     zigzag_cls = build_zigzag_indicator()
@@ -185,6 +243,11 @@ def main(pct_threshold: float = 0.001) -> None:
     swing_df = label_structure(df, zigzag, pct_threshold)
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     swing_df.to_csv(OUTPUT_FILE, index=False)
+
+    hl_to_hh_df = build_transition_pairs(swing_df, "HL", "HH")
+    lh_to_ll_df = build_transition_pairs(swing_df, "LH", "LL")
+    hl_to_hh_df.to_csv(HL_TO_HH_FILE, index=False)
+    lh_to_ll_df.to_csv(LH_TO_LL_FILE, index=False)
     print(f"Saved swing structure to {OUTPUT_FILE}")
 
 

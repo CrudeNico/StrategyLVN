@@ -81,7 +81,7 @@ def build_volume_profile_indicator() -> vbt.IndicatorFactory:
     return VolumeProfileBin
 
 
-def compute_volume_profile(df: pd.DataFrame, bins: int = 150) -> pd.DataFrame:
+def compute_volume_profile(df: pd.DataFrame, bins: int = 140) -> pd.DataFrame:
     """Run the volume profile indicator and structure the output."""
     price_min = float(df["low"].min())
     price_max = float(df["high"].max())
@@ -143,9 +143,9 @@ def compute_volume_profile(df: pd.DataFrame, bins: int = 150) -> pd.DataFrame:
     ]
 
 
-def main() -> None:
+def main(bins: int = 140) -> None:
     df = load_data()
-    profile_df = compute_volume_profile(df)
+    profile_df = compute_volume_profile(df, bins=bins)
     OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     profile_df.to_csv(OUTPUT_FILE, index=False)
     print(f"Saved volume profile to {OUTPUT_FILE}")

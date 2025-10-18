@@ -236,7 +236,7 @@ def build_transition_pairs(
     return pd.DataFrame.from_records(records, columns=columns)
 
 
-def main(pct_threshold: float = 0.001) -> None:
+def main(pct_threshold: float = 0.0005) -> None:
     df = load_data()
     zigzag_cls = build_zigzag_indicator()
     zigzag = zigzag_cls.run(df["close"], pct=pct_threshold)

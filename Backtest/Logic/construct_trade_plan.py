@@ -24,6 +24,7 @@ from Backtest.Logic.trading_rules import (
 RESULTS_DIR = PROJECT_ROOT / "Findings" / "Results"
 LVN_FILE = RESULTS_DIR / "zigzag_lvn_summary.csv"
 SWINGS_FILE = RESULTS_DIR / "zigzag_swings.csv"
+EMA_FILE = RESULTS_DIR / "ema20.csv"
 OUTPUT_FILE = PROJECT_ROOT / "Backtest" / "Results" / "trade_plan.csv"
 
 
@@ -49,11 +50,15 @@ class TradeScenario:
     time_delta_minutes: float
 
 
-def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
     price_df = annotate_with_windows(load_price_data())
     if not LVN_FILE.exists():
         raise FileNotFoundError(
             f"LVN summary not found at {LVN_FILE}. Run extract_lvn.py first."
+        )
+    if not EMA_FILE.exists():
+        raise FileNotFoundError(
+            f"EMA data not found at {EMA_FILE}. Run compute_ema.py first."
         )
     lvn_df = pd.read_csv(
         LVN_FILE,
@@ -63,7 +68,10 @@ def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         SWINGS_FILE,
         parse_dates=["datetime"],
     ).sort_values("leg_id", ignore_index=True)
-    return price_df, lvn_df, swings_df
+    ema_df = pd.read_csv(EMA_FILE, parse_dates=["datetime"])
+    ema_df.sort_values("datetime", inplace=True, ignore_index=True)
+    ema_series = ema_df.set_index("datetime")["ema_20"].astype(float)
+    return price_df, lvn_df, swings_df, ema_series
 
 
 def find_next_pivot(
@@ -115,7 +123,7 @@ def find_entry(
 
 
 def build_trade_scenarios() -> list[TradeScenario]:
-    price_df, lvn_df, swings = load_inputs()
+    price_df, lvn_df, swings, ema_series = load_inputs()
     risk_manager = RiskManager()
     risk_eur = risk_manager.risk_amount()
 
@@ -153,6 +161,18 @@ def build_trade_scenarios() -> list[TradeScenario]:
         if entry is None:
             continue
         entry_time, entry_price = entry
+
+        try:
+            ema_value = float(ema_series.loc[entry_time])
+        except KeyError:
+            continue
+        if np.isnan(ema_value):
+            continue
+
+        if direction == "long" and ema_value > entry_price:
+            continue
+        if direction == "short" and ema_value < entry_price:
+            continue
 
         if entry_time >= target_exec_time:
             continue

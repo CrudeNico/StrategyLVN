@@ -51,6 +51,7 @@ def build_trade_scenarios_for_params(
     price_df: pd.DataFrame,
     swings: pd.DataFrame,
     lvn_df: pd.DataFrame,
+    ema_series: pd.Series,
 ) -> List[TradeScenario]:
     risk_eur = RiskManager().risk_amount()
     scenarios: List[TradeScenario] = []
@@ -86,6 +87,17 @@ def build_trade_scenarios_for_params(
         if entry is None:
             continue
         entry_time, entry_price = entry
+        try:
+            ema_value = float(ema_series.loc[entry_time])
+        except KeyError:
+            continue
+        if np.isnan(ema_value):
+            continue
+
+        if direction == "long" and ema_value > entry_price:
+            continue
+        if direction == "short" and ema_value < entry_price:
+            continue
         if entry_time >= target_exec_time:
             continue
 
@@ -169,6 +181,7 @@ def compute_metrics(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
 def main() -> None:
     raw_prices = load_price_data()
     price_df = annotate_with_windows(raw_prices.copy())
+    ema_series = raw_prices["close"].ewm(span=20, adjust=False, min_periods=20).mean()
 
     zigzag_indicator = build_zigzag_indicator()
 
@@ -195,7 +208,9 @@ def main() -> None:
         if lvn_df.empty:
             continue
 
-        trade_scenarios = build_trade_scenarios_for_params(price_df, swings, lvn_df)
+        trade_scenarios = build_trade_scenarios_for_params(
+            price_df, swings, lvn_df, ema_series
+        )
         if not trade_scenarios:
             continue
         plan_df = scenarios_to_dataframe(trade_scenarios)

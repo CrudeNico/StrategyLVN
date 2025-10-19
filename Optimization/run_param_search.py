@@ -55,12 +55,19 @@ def build_trade_scenarios_for_params(
     ema_series: pd.Series,
 ) -> List[TradeScenario]:
     risk_eur = RiskManager().risk_amount()
+    lvn_df = lvn_df.sort_values("from_datetime").reset_index(drop=True)
+    last_transition_type: Optional[str] = None
     scenarios: List[TradeScenario] = []
 
     for row in lvn_df.itertuples():
         direction = "long" if row.transition_type == "HL_to_HH" else "short"
         stop_price = float(row.from_price)
         stop_leg_id = int(row.from_leg_id)
+
+        required_type = row.transition_type
+        if last_transition_type != required_type:
+            last_transition_type = row.transition_type
+            continue
 
         target_label = "HH" if direction == "long" else "LL"
         next_pivot = find_next_pivot(swings, row.to_leg_id, target_label)
@@ -136,6 +143,8 @@ def build_trade_scenarios_for_params(
                 time_delta_minutes=float(row.time_delta_minutes),
             )
         )
+
+        last_transition_type = row.transition_type
 
     return scenarios
 

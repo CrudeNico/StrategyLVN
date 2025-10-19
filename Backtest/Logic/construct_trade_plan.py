@@ -127,6 +127,8 @@ def find_entry(
 
 def build_trade_scenarios() -> list[TradeScenario]:
     price_df, lvn_df, swings, ema_series = load_inputs()
+    lvn_df = lvn_df.sort_values("from_datetime").reset_index(drop=True)
+    last_transition_type: Optional[str] = None
     risk_manager = RiskManager()
     risk_eur = risk_manager.risk_amount()
 
@@ -136,6 +138,11 @@ def build_trade_scenarios() -> list[TradeScenario]:
         direction = "long" if row.transition_type == "HL_to_HH" else "short"
         stop_leg_id = row.from_leg_id
         stop_price = float(row.from_price)
+
+        required_type = row.transition_type
+        if last_transition_type != required_type:
+            last_transition_type = row.transition_type
+            continue
 
         target_label = "HH" if direction == "long" else "LL"
         next_pivot = find_next_pivot(swings, row.to_leg_id, target_label)
@@ -214,6 +221,8 @@ def build_trade_scenarios() -> list[TradeScenario]:
                 time_delta_minutes=float(row.time_delta_minutes),
             )
         )
+
+        last_transition_type = row.transition_type
 
     return scenarios
 

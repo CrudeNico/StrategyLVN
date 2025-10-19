@@ -1,0 +1,55 @@
+Identified estimand:
+Estimand type: EstimandType.NONPARAMETRIC_ATE
+
+### Estimand : 1
+Estimand name: backdoor
+Estimand expression:
+        d                                                                      ↪
+──────────────────(E[win|atr,stop_distance,volatility,lvn_band_width,reward_di ↪
+d[dist_to_ema_abs]                                                             ↪
+
+↪                    
+↪ stance,entry_hour])
+↪                    
+Estimand assumption 1, Unconfoundedness: If U→{dist_to_ema_abs} and U→win then P(win|dist_to_ema_abs,atr,stop_distance,volatility,lvn_band_width,reward_distance,entry_hour,U) = P(win|dist_to_ema_abs,atr,stop_distance,volatility,lvn_band_width,reward_distance,entry_hour)
+
+### Estimand : 2
+Estimand name: iv
+No such variable(s) found!
+
+### Estimand : 3
+Estimand name: frontdoor
+No such variable(s) found!
+
+
+Estimate:
+*** Causal Estimate ***
+
+## Identified estimand
+Estimand type: EstimandType.NONPARAMETRIC_ATE
+
+### Estimand : 1
+Estimand name: backdoor
+Estimand expression:
+        d                                                                      ↪
+──────────────────(E[win|atr,stop_distance,volatility,lvn_band_width,reward_di ↪
+d[dist_to_ema_abs]                                                             ↪
+
+↪                    
+↪ stance,entry_hour])
+↪                    
+Estimand assumption 1, Unconfoundedness: If U→{dist_to_ema_abs} and U→win then P(win|dist_to_ema_abs,atr,stop_distance,volatility,lvn_band_width,reward_distance,entry_hour,U) = P(win|dist_to_ema_abs,atr,stop_distance,volatility,lvn_band_width,reward_distance,entry_hour)
+
+## Realized estimand
+b: win~dist_to_ema_abs+atr+stop_distance+volatility+lvn_band_width+reward_distance+entry_hour
+Target units: ate
+
+## Estimate
+Mean value: -0.610280371342231
+
+
+Refutation:
+Refute: Bootstrap Sample Dataset
+Estimated effect:-0.610280371342231
+New effect:-0.6099756986629766
+p value:0.8799999999999999

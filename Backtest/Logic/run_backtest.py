@@ -26,6 +26,7 @@ from Backtest.Logic.trading_rules import (
 TRADE_PLAN_FILE = PROJECT_ROOT / "Backtest" / "Results" / "trade_plan.csv"
 TRADE_RESULTS_FILE = PROJECT_ROOT / "Backtest" / "Results" / "trade_results.csv"
 EQUITY_FILE = PROJECT_ROOT / "Backtest" / "Results" / "equity_curve.csv"
+MIN_HOLD_MINUTES = 10
 
 
 @dataclass
@@ -71,10 +72,10 @@ def simulate_exit(
     price_df: pd.DataFrame,
 ) -> tuple[pd.Timestamp, float, str]:
     entry_time = row["entry_time"]
-    target_time = row["target_time"]
     direction = 1 if row["direction"] == "long" else -1
     stop_price = float(row["stop_price"])
     target_price = float(row["target_price"])
+    min_hold_end = entry_time + pd.Timedelta(minutes=MIN_HOLD_MINUTES)
 
     if entry_time not in price_df.index:
         raise ValueError(f"Entry timestamp {entry_time} not found in price data.")
@@ -91,7 +92,6 @@ def simulate_exit(
         bar_low = bar["low"]
         bar_high = bar["high"]
 
-        # stop logic
         stop_hit = (
             bar_low <= stop_price if direction == 1 else bar_high >= stop_price
         )
@@ -102,18 +102,7 @@ def simulate_exit(
                 exit_price = stop_price
                 exit_reason = "stop"
                 break
-            if timestamp == target_time:
-                exit_time = timestamp
-                exit_price = target_price
-                exit_reason = "target"
-                break
             continue
-
-        if bar["force_exit"]:
-            exit_time = timestamp
-            exit_price = bar["open"]
-            exit_reason = "friday_exit"
-            break
 
         if stop_hit:
             exit_time = timestamp
@@ -121,10 +110,20 @@ def simulate_exit(
             exit_reason = "stop"
             break
 
-        if timestamp == target_time:
+        target_hit = (
+            bar_high >= target_price if direction == 1 else bar_low <= target_price
+        )
+
+        if timestamp >= min_hold_end and target_hit:
             exit_time = timestamp
             exit_price = target_price
             exit_reason = "target"
+            break
+
+        if bar["force_exit"]:
+            exit_time = timestamp
+            exit_price = bar["open"]
+            exit_reason = "friday_exit"
             break
 
     if exit_time is None:

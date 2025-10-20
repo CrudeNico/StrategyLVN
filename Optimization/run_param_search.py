@@ -23,7 +23,11 @@ from Backtest.Logic.trading_rules import (
 )
 from Backtest.Logic.run_backtest import build_base_trades, size_trades
 from Backtest.Logic.construct_trade_plan import (
+    ATR_MULTIPLIER,
+    EMA_MARGIN,
+    TP_MULTIPLIER,
     TradeScenario,
+    compute_atr,
     find_next_pivot,
     find_entry,
     scenarios_to_dataframe,
@@ -53,9 +57,11 @@ def build_trade_scenarios_for_params(
     swings: pd.DataFrame,
     lvn_df: pd.DataFrame,
     ema_series: pd.Series,
+    atr_series: pd.Series,
 ) -> List[TradeScenario]:
     risk_eur = RiskManager().risk_amount()
     scenarios: List[TradeScenario] = []
+    lvn_df = lvn_df.sort_values("from_datetime").reset_index(drop=True)
 
     for row in lvn_df.itertuples():
         direction = "long" if row.transition_type == "HL_to_HH" else "short"
@@ -95,18 +101,38 @@ def build_trade_scenarios_for_params(
         if np.isnan(ema_value):
             continue
 
-        if direction == "long" and ema_value > entry_price:
+        ema_buffer = ema_value * EMA_MARGIN
+        if direction == "long" and entry_price <= ema_value + ema_buffer:
             continue
-        if direction == "short" and ema_value < entry_price:
+        if direction == "short" and entry_price >= ema_value - ema_buffer:
             continue
         if entry_time >= target_exec_time:
             continue
 
+        try:
+            atr_value = float(atr_series.loc[entry_time])
+        except KeyError:
+            continue
+        if np.isnan(atr_value) or atr_value <= 0:
+            continue
+
         if direction == "long":
             stop_distance = entry_price - stop_price
+            desired_stop_distance = max(stop_distance, ATR_MULTIPLIER * atr_value)
+            stop_price = entry_price - desired_stop_distance
+            stop_distance = desired_stop_distance
+            reward = target_price - entry_price
+            min_reward = max(reward, TP_MULTIPLIER * stop_distance)
+            target_price = entry_price + min_reward
             reward = target_price - entry_price
         else:
             stop_distance = stop_price - entry_price
+            desired_stop_distance = max(stop_distance, ATR_MULTIPLIER * atr_value)
+            stop_price = entry_price + desired_stop_distance
+            stop_distance = desired_stop_distance
+            reward = entry_price - target_price
+            min_reward = max(reward, TP_MULTIPLIER * stop_distance)
+            target_price = entry_price - min_reward
             reward = entry_price - target_price
 
         if stop_distance <= 0:
@@ -182,7 +208,7 @@ def compute_metrics(trades_df: pd.DataFrame, equity_df: pd.DataFrame) -> dict:
 def main() -> None:
     raw_prices = load_price_data()
     price_df = annotate_with_windows(raw_prices.copy())
-    ema_series = raw_prices["close"].ewm(span=20, adjust=False, min_periods=20).mean()
+    atr_series = compute_atr(price_df)
 
     zigzag_indicator = build_zigzag_indicator()
 
@@ -214,7 +240,7 @@ def main() -> None:
         ).mean()
 
         trade_scenarios = build_trade_scenarios_for_params(
-            price_df, swings, lvn_df, ema_series
+            price_df, swings, lvn_df, ema_series, atr_series
         )
         if not trade_scenarios:
             continue

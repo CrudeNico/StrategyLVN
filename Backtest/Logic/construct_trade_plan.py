@@ -21,11 +21,17 @@ from Backtest.Logic.trading_rules import (
     annotate_with_windows,
     load_price_data,
 )
+
 RESULTS_DIR = PROJECT_ROOT / "Findings" / "Results"
 LVN_FILE = RESULTS_DIR / "zigzag_lvn_summary.csv"
 SWINGS_FILE = RESULTS_DIR / "zigzag_swings.csv"
 EMA_FILE = RESULTS_DIR / "ema20.csv"
 OUTPUT_FILE = PROJECT_ROOT / "Backtest" / "Results" / "trade_plan.csv"
+
+ATR_WINDOW = 14
+ATR_MULTIPLIER = 1.5
+TP_MULTIPLIER = 2.0
+EMA_MARGIN = 0.001  # 0.1% buffer above/below EMA
 
 
 @dataclass
@@ -50,7 +56,16 @@ class TradeScenario:
     time_delta_minutes: float
 
 
-def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
+def compute_atr(price_df: pd.DataFrame, window: int = ATR_WINDOW) -> pd.Series:
+    high_low = price_df["high"] - price_df["low"]
+    high_close = (price_df["high"] - price_df["close"].shift()).abs()
+    low_close = (price_df["low"] - price_df["close"].shift()).abs()
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    atr = tr.rolling(window=window, min_periods=1).mean()
+    return atr
+
+
+def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     price_df = annotate_with_windows(load_price_data())
     if not LVN_FILE.exists():
         raise FileNotFoundError(
@@ -74,7 +89,8 @@ def load_inputs() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.Series]:
     if not ema_cols:
         raise ValueError("EMA file does not contain an ema_* column")
     ema_series = ema_df.set_index("datetime")[ema_cols[0]].astype(float)
-    return price_df, lvn_df, swings_df, ema_series
+    atr_series = compute_atr(price_df)
+    return price_df, lvn_df, swings_df, ema_series, atr_series
 
 
 def find_next_pivot(
@@ -126,7 +142,7 @@ def find_entry(
 
 
 def build_trade_scenarios() -> list[TradeScenario]:
-    price_df, lvn_df, swings, ema_series = load_inputs()
+    price_df, lvn_df, swings, ema_series, atr_series = load_inputs()
     risk_manager = RiskManager()
     risk_eur = risk_manager.risk_amount()
 
@@ -172,9 +188,17 @@ def build_trade_scenarios() -> list[TradeScenario]:
         if np.isnan(ema_value):
             continue
 
-        if direction == "long" and ema_value > entry_price:
+        ema_buffer = ema_value * EMA_MARGIN
+        if direction == "long" and entry_price <= ema_value + ema_buffer:
             continue
-        if direction == "short" and ema_value < entry_price:
+        if direction == "short" and entry_price >= ema_value - ema_buffer:
+            continue
+
+        try:
+            atr_value = float(atr_series.loc[entry_time])
+        except KeyError:
+            continue
+        if np.isnan(atr_value) or atr_value <= 0:
             continue
 
         if entry_time >= target_exec_time:
@@ -182,9 +206,21 @@ def build_trade_scenarios() -> list[TradeScenario]:
 
         if direction == "long":
             stop_distance = entry_price - stop_price
+            desired_stop_distance = max(stop_distance, ATR_MULTIPLIER * atr_value)
+            stop_price = entry_price - desired_stop_distance
+            stop_distance = desired_stop_distance
+            reward = target_price - entry_price
+            min_reward = max(reward, TP_MULTIPLIER * stop_distance)
+            target_price = entry_price + min_reward
             reward = target_price - entry_price
         else:
             stop_distance = stop_price - entry_price
+            desired_stop_distance = max(stop_distance, ATR_MULTIPLIER * atr_value)
+            stop_price = entry_price + desired_stop_distance
+            stop_distance = desired_stop_distance
+            reward = entry_price - target_price
+            min_reward = max(reward, TP_MULTIPLIER * stop_distance)
+            target_price = entry_price - min_reward
             reward = entry_price - target_price
 
         if stop_distance <= 0:
